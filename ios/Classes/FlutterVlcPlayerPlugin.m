@@ -60,7 +60,7 @@ UIView *_view;
     CGRect _rect = CGRectMake(0, 0, 700, 100);
     _view = [[UIView alloc] initWithFrame: _rect];
     _view.contentMode = UIViewContentModeScaleAspectFit;
-    _view.backgroundColor = [UIColor whiteColor];
+    _view.backgroundColor = [UIColor blackColor];
     _view.clipsToBounds = YES;
     _view.autoresizingMask = UIViewAutoresizingFlexibleHeight | UIViewAutoresizingFlexibleWidth;
     [registrar registerViewFactory: [FLTPlayerViewFactory initWithRegistrar: registrar : _view] withId:@"flutter_video_plugin/getVideoView"];
@@ -75,11 +75,20 @@ UIView *_view;
         VLCMedia *_media = [VLCMedia mediaWithURL:[NSURL URLWithString:_url]];
         [_player setMedia:_media];
         [_player setPosition:0.5];
-
+        
         [_player setDrawable: _videoView];
         [_player addObserver:self forKeyPath:@"state" options:NSKeyValueObservingOptionNew context:nil];
         [_player play];
-    } else if ([_methodName isEqualToString:@"dispose"]){
+    } else if ([_methodName isEqualToString:@"start"]){
+        [_player play];
+    }
+    else if ([_methodName isEqualToString:@"pause"]){
+        [_player pause];
+    }
+    else if ([_methodName isEqualToString:@"isPlaying"]){
+        result(@{@"isPlaying" : [NSNumber numberWithBool:[_player isPlaying]]});
+    }
+    else if ([_methodName isEqualToString:@"dispose"]){
         [_player stop];
     }else if ([_methodName isEqualToString:@"getSnapshot"]){
         UIView *_drawable = _player.drawable;
