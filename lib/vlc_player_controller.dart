@@ -30,11 +30,15 @@ class VlcPlayerController {
   void dispose() {
     if (Platform.isIOS) {
       _channel.invokeMethod("dispose");
+    } else if (Platform.isAndroid) {
+      _channel.invokeMethod("dispose");
     }
   }
 
   void start() {
     if (Platform.isIOS) {
+      _channel.invokeMethod("start");
+    } else if (Platform.isAndroid) {
       _channel.invokeMethod("start");
     }
   }
@@ -43,12 +47,16 @@ class VlcPlayerController {
     if (Platform.isIOS) {
       var result = await  _channel.invokeMethod("isPlaying");
       return result['isPlaying'];
+    } else if (Platform.isAndroid) {
+      var result = await  _channel.invokeMethod("isPlaying");
+      return result['isPlaying'];
     }
-    return false;
   }
 
   void pause() {
     if (Platform.isIOS) {
+      _channel.invokeMethod("pause");
+    } else if (Platform.isAndroid) {
       _channel.invokeMethod("pause");
     }
   }
