@@ -112,6 +112,17 @@ class FlutterVideoView implements PlatformView, MethodChannel.MethodCallHandler,
                     mediaPlayer.play();
                 }
                 break;
+            case "start":
+                mediaPlayer.play();
+                break;
+            case "pause":
+                mediaPlayer.pause();
+                break;
+            case "isPlaying":
+                Map<String, boolean> response = new HashMap<>();
+                response.put("isPlaying", mediaPlayer.isPlaying());
+                result.success(response);
+                break;
         }
     }
 
