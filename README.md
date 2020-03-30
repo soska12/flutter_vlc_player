@@ -45,6 +45,22 @@ To take screenshot from video just follow next code:
 ```dart
 Uint8List image = await controller.makeSnapshot();
 ```
+for release build on andorid set
+```
+release {
+            signingConfig signingConfigs.release
+            minifyEnabled true
+            useProguard true
+            proguardFiles getDefaultProguardFile(
+                    'proguard-android-optimize.txt'),
+                    'proguard-rules.pro'
+        }
+```
+and also the proguard rule:
+```
+-keep class org.videolan.libvlc.** { *; } 
+```
+
 ## Current issues
 Current issues list [is here](https://github.com/solid-software/flutter_vlc_player/issues).   
 Found a bug? [Open the issue](https://github.com/solid-software/flutter_vlc_player/issues/new).
