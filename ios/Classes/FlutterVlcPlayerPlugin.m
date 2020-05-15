@@ -79,7 +79,8 @@ UIView *_view;
         [_player setDrawable: _videoView];
         [_player addObserver:self forKeyPath:@"state" options:NSKeyValueObservingOptionNew context:nil];
         [_player play];
-    } else if ([_methodName isEqualToString:@"start"]){
+    }
+    else if ([_methodName isEqualToString:@"start"]){
         [_player play];
     }
     else if ([_methodName isEqualToString:@"pause"]){
@@ -87,6 +88,13 @@ UIView *_view;
     }
     else if ([_methodName isEqualToString:@"isPlaying"]){
         result(@{@"isPlaying" : [NSNumber numberWithBool:[_player isPlaying]]});
+    }
+    else if ([_methodName isEqualToString:@"position"]){
+        result(@{@"position" : [NSNumber numberWithFloat:[_player position]]});
+    }
+    else if ([_methodName isEqualToString:@"setPosition"]){
+        float pos = [call.arguments[@"position"] floatValue];
+        [_player setPosition:pos];
     }
     else if ([_methodName isEqualToString:@"dispose"]){
         [_player stop];
