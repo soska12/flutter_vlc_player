@@ -53,6 +53,17 @@ class VlcPlayerController {
     }
   }
 
+  Future<double> position() async {
+    var result = await  _channel.invokeMethod("position");
+    return result['position'];
+  }
+
+  void setPosition(double position) {
+     _channel.invokeMethod("setPosition", {
+      'position': position,
+    });
+  }
+
   void pause() {
     if (Platform.isIOS) {
       _channel.invokeMethod("pause");
