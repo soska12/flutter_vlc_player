@@ -123,6 +123,15 @@ class FlutterVideoView implements PlatformView, MethodChannel.MethodCallHandler,
                 response2.put("isPlaying", mediaPlayer.isPlaying());
                 result.success(response2);
                 break;
+            case "position":
+                Map<String, Boolean> response3 = new HashMap<>();
+                response3.put("position", mediaPlayer.getPosition());
+                result.success(response3);
+                break;
+            case "setPosition":
+                double pos = methodCall.argument("setPosition");
+                mediaPlayer.setPosition(pos)
+                break;
         }
     }
 
