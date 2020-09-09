@@ -129,8 +129,8 @@ class FlutterVideoView implements PlatformView, MethodChannel.MethodCallHandler,
                 result.success(response3);
                 break;
             case "setPosition":
-                float pos = methodCall.argument("setPosition");
-                mediaPlayer.setPosition(pos)
+                double pos = methodCall.argument("position");
+                mediaPlayer.setPosition((float)pos);
                 break;
         }
     }
