@@ -17,6 +17,7 @@ class VlcPlayerController {
     var result = await _channel.invokeMethod("playVideo", {
       'url': url,
     });
+    print("ASPECT RATIO: ${result['aspectRatio']}");
     return result['aspectRatio'];
   }
 
@@ -45,21 +46,21 @@ class VlcPlayerController {
 
   Future<bool> isPlaying() async {
     if (Platform.isIOS) {
-      var result = await  _channel.invokeMethod("isPlaying");
+      var result = await _channel.invokeMethod("isPlaying");
       return result['isPlaying'];
     } else if (Platform.isAndroid) {
-      var result = await  _channel.invokeMethod("isPlaying");
+      var result = await _channel.invokeMethod("isPlaying");
       return result['isPlaying'];
     }
   }
 
   Future<double> position() async {
-    var result = await  _channel.invokeMethod("position");
+    var result = await _channel.invokeMethod("position");
     return result['position'];
   }
 
   void setPosition(double position) {
-     _channel.invokeMethod("setPosition", {
+    _channel.invokeMethod("setPosition", {
       'position': position,
     });
   }
