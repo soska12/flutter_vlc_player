@@ -173,38 +173,47 @@ class FlutterVideoView implements PlatformView, MethodChannel.MethodCallHandler,
 }
  */
 
- package software.solid.fluttervlcplayer;
-
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.PixelFormat;
 import android.graphics.SurfaceTexture;
 import android.net.Uri;
 import android.util.Base64;
+import android.util.Log;
+import android.view.MotionEvent;
 import android.view.Surface;
+import android.view.SurfaceView;
 import android.view.TextureView;
 import android.view.View;
+import android.view.ViewGroup;
+import android.os.Handler;
+import android.os.Looper;
 
 import androidx.annotation.NonNull;
 
 import io.flutter.plugin.common.*;
 import io.flutter.plugin.platform.PlatformView;
 import io.flutter.view.TextureRegistry;
-
 import org.videolan.libvlc.IVLCVout;
 import org.videolan.libvlc.LibVLC;
 import org.videolan.libvlc.Media;
 import org.videolan.libvlc.MediaPlayer;
+import org.videolan.libvlc.RendererDiscoverer;
+import org.videolan.libvlc.RendererItem;
 
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.List;
+import java.lang.Math;
+import java.io.File;
 
 class FlutterVideoView implements PlatformView, MethodChannel.MethodCallHandler, MediaPlayer.EventListener {
 
     // Silences player log output.
-    private static final boolean DISABLE_LOG_OUTPUT = true;
+    private static final String TAG = "Flutter VLC";
     private static final int HW_ACCELERATION_AUTOMATIC = -1;
     private static final int HW_ACCELERATION_DISABLED = 0;
     private static final int HW_ACCELERATION_DECODING = 1;
@@ -223,6 +232,14 @@ class FlutterVideoView implements PlatformView, MethodChannel.MethodCallHandler,
     private TextureView textureView;
     private IVLCVout vout;
     private boolean playerDisposed;
+
+    private RendererDiscoverer rendererDiscoverer;
+    private List<RendererItem> rendererItems;
+    private boolean playerDisposed;
+    private boolean autoplay = true;
+    private boolean firstRun = true;
+
+    Handler mHandler = new Handler(Looper.getMainLooper());
 
     public FlutterVideoView(Context context, PluginRegistry.Registrar _registrar, BinaryMessenger messenger, int id) {
         this.playerDisposed = false;
@@ -252,19 +269,33 @@ class FlutterVideoView implements PlatformView, MethodChannel.MethodCallHandler,
         textureView.setSurfaceTexture(textureEntry.surfaceTexture());
         textureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
 
-            boolean wasPaused = false;
+             boolean wasPlaying = false;
+
+            private final Runnable mRunnable = new Runnable() {
+                @Override
+                public void run() {
+                    if (vout == null) return;
+                    vout.setVideoSurface(new Surface(textureView.getSurfaceTexture()), null);
+//                    vout.setWindowSize(textureView.getWidth(), textureView.getHeight());
+//                    ViewGroup.LayoutParams lp = (ViewGroup.LayoutParams) textureView.getLayoutParams();
+//                    lp.width = 300;
+//                    lp.height = 300;
+//                    textureView.setLayoutParams(lp);
+//                    textureView.invalidate();
+                    vout.attachViews();
+                    textureView.forceLayout();
+//                    if (wasPlaying)
+                    {
+                        mediaPlayer.play();
+                        wasPlaying = false;
+                    }
+                }
+            };
 
             @Override
             public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
-                if (vout == null) return;
-
-                vout.setVideoSurface(new Surface(textureView.getSurfaceTexture()), null);
-                vout.attachViews();
-                textureView.forceLayout();
-                if (wasPaused) {
-                    mediaPlayer.play();
-                    wasPaused = false;
-                }
+                mHandler.removeCallbacks(mRunnable);
+                mHandler.postDelayed(mRunnable, 1000);
             }
 
             @Override
@@ -277,14 +308,19 @@ class FlutterVideoView implements PlatformView, MethodChannel.MethodCallHandler,
                 if (playerDisposed) {
                     if (mediaPlayer != null) {
                         mediaPlayer.stop();
+                        mediaPlayer.setEventListener(null);
+                        mediaPlayer.getVLCVout().detachViews();
                         mediaPlayer.release();
+                        libVLC.release();
+                        libVLC = null;
                         mediaPlayer = null;
+                        vout = null;
                     }
                     return true;
                 } else {
                     if (mediaPlayer != null && vout != null) {
+                        wasPlaying = mediaPlayer.isPlaying();
                         mediaPlayer.pause();
-                        wasPaused = true;
                         vout.detachViews();
                     }
                     return true;
@@ -311,6 +347,14 @@ class FlutterVideoView implements PlatformView, MethodChannel.MethodCallHandler,
     public void dispose() {
         if (mediaPlayer != null) mediaPlayer.stop();
         if (vout != null) vout.detachViews();
+        if (mediaPlayer != null) {
+            mediaPlayer.stop();
+            mediaPlayer.setEventListener(null);
+        }
+        if (vout != null) {
+//            vout.removeCallback(this);
+            vout.detachViews();
+        }
         playerDisposed = true;
     }
 
@@ -320,6 +364,11 @@ class FlutterVideoView implements PlatformView, MethodChannel.MethodCallHandler,
     @SuppressLint("WrongThread")
     @Override
     public void onMethodCall(MethodCall methodCall, @NonNull MethodChannel.Result result) {
+        boolean isLocalMedia = false;
+        String subtitle = "";
+        boolean isLocalSubtitle = false;
+        boolean isSubtitleSelected = true;
+        boolean loop = false;
         switch (methodCall.method) {
             case "initialize":
                 if (textureView == null) {

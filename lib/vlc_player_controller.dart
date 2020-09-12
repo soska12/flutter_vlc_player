@@ -1,11 +1,29 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+
 import 'package:cryptoutils/cryptoutils.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 class VlcPlayerController {
   MethodChannel _channel;
   bool hasClients = false;
+  VoidCallback _onInit;
+  List<VoidCallback> _eventHandlers;
+
+  VlcPlayerController(
+      {
+
+      /// This is a callback that will be executed once the platform view has been initialized.
+      /// If you want the media to play as soon as the platform view has initialized, you could just call
+      /// [VlcPlayerController.play] in this callback. (see the example)
+      VoidCallback onInit}) {
+    _onInit = onInit;
+    _eventHandlers = new List();
+  }
 
   initView(int id) {
     _channel = MethodChannel("flutter_video_plugin/getVideoView_$id");
