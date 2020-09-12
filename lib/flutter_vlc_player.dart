@@ -22,29 +22,28 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cryptoutils/cryptoutils.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
-enum PlayingState { STOPPED, BUFFERING, PLAYING, ERROR }
+enum PlayingState { STOPPED, PAUSED, BUFFERING, PLAYING, ERROR }
 enum HwAcc { AUTO, DISABLED, DECODING, FULL }
+enum CastStatus { DEVICE_ADDED, DEVICE_DELETED }
+
+typedef CastCallback = void Function(CastStatus, String, String);
 
 int getHwAcc({@required HwAcc hwAcc}) {
   switch (hwAcc) {
     case HwAcc.DISABLED:
       return 0;
-      break;
     case HwAcc.DECODING:
       return 1;
-      break;
     case HwAcc.FULL:
       return 2;
-      break;
     case HwAcc.AUTO:
     default:
       return -1;
-      break;
   }
 }
 
@@ -63,7 +62,13 @@ class VlcPlayer extends StatefulWidget {
   final double aspectRatio;
   final HwAcc hwAcc;
   final List<String> options;
+  final bool autoplay;
   final String url;
+  final bool isLocalMedia;
+  final String subtitle;
+  final bool isLocalSubtitle;
+  final bool isSubtitleSelected;
+  final bool loop;
   final Widget placeholder;
   final VlcPlayerController controller;
 
@@ -92,6 +97,24 @@ class VlcPlayer extends StatefulWidget {
     /// Before the platform view has initialized, this placeholder will be rendered instead of the video player.
     /// This can simply be a [CircularProgressIndicator] (see the example.)
     this.placeholder,
+
+    /// Set true if the provided url is local file
+    this.isLocalMedia,
+
+    /// The video should be played automatically.
+    this.autoplay,
+
+    /// Set the external subtitle to load with video
+    this.subtitle,
+
+    /// Set true if the provided subtitle is local file
+    this.isLocalSubtitle,
+
+    /// Set true if the provided subtitle is selected by default
+    this.isSubtitleSelected,
+
+    /// Loop the playback forever
+    this.loop,
   });
 
   @override
@@ -169,9 +192,14 @@ class _VlcPlayerState extends State<VlcPlayer>
     // with LibVLC on the platform side.
     if (_controller.hasClients) {
       await _controller._initialize(
-        widget.url,
-        widget.hwAcc,
-        widget.options,
+        url: widget.url,
+        hwAcc: widget.hwAcc,
+        options: widget.options,
+        autoplay: widget.autoplay,
+        isLocalMedia: widget.isLocalMedia,
+        subtitle: widget.subtitle,
+        isLocalSubtitle: widget.isLocalSubtitle,
+        loop: widget.loop,
       );
     }
   }
@@ -207,6 +235,7 @@ class VlcPlayerController {
   int _subtitleCount = 0;
 
   VoidCallback _onInit;
+  CastCallback _onCastHandler;
   List<VoidCallback> _eventHandlers;
 
   /// Once the [_methodChannel] and [_eventChannel] have been registered with
@@ -277,14 +306,36 @@ class VlcPlayerController {
 
   double get playbackSpeed => _playbackSpeed;
 
+  /// This is the number of audio tracks embedded in the video
+  int _audioTracksCount = 1;
+
+  int get audioTracksCount => _audioTracksCount - 1;
+
+  /// this is the id of active audio track
+  int _activeAudioTrack = 1;
+
+  int get activeAudioTrack => _activeAudioTrack;
+
+  /// This is the number of spu tracks embedded in the video
+  int _spuTracksCount = 0;
+
+  int get spuTracksCount => _spuTracksCount;
+
+  /// this is the id of active spu track
+  int _activeSpuTrack = 0;
+
+  int get activeSpuTrack => _activeSpuTrack;
+
   VlcPlayerController(
       {
 
       /// This is a callback that will be executed once the platform view has been initialized.
       /// If you want the media to play as soon as the platform view has initialized, you could just call
       /// [VlcPlayerController.play] in this callback. (see the example)
-      VoidCallback onInit}) {
+      VoidCallback onInit,
+      CastCallback onCastHandler}) {
     _onInit = onInit;
+    _onCastHandler = onCastHandler;
     _eventHandlers = new List();
   }
 
@@ -310,14 +361,29 @@ class VlcPlayerController {
     _eventHandlers.forEach((handler) => handler());
   }
 
-  Future<void> _initialize(String url,
-      [HwAcc hwAcc, List<String> options]) async {
+  Future<void> _initialize({
+    @required String url,
+    HwAcc hwAcc,
+    List<String> options,
+    bool autoplay,
+    bool isLocalMedia,
+    String subtitle,
+    bool isLocalSubtitle,
+    bool isSubtitleSelected,
+    bool loop,
+  }) async {
     //if(initialized) throw new Exception("Player already initialized!");
 
     await _methodChannel.invokeMethod("initialize", {
       'url': url,
       'hwAcc': getHwAcc(hwAcc: hwAcc),
-      'options': options ?? []
+      'options': options ?? [],
+      'autoplay': autoplay ?? true,
+      'isLocalMedia': isLocalMedia ?? false,
+      'subtitle': subtitle ?? '',
+      'isLocalSubtitle': isLocalSubtitle ?? false,
+      'isSubtitleSelected': isSubtitleSelected ?? true,
+      'loop': loop ?? false,
     });
     _position = 0;
 
@@ -328,6 +394,14 @@ class VlcPlayerController {
             _size = new Size(event['width'], event['height']);
           if (event['length'] != null) _duration = event['length'];
           if (event['ratio'] != null) _aspectRatio = event['ratio'];
+          if (event['audioTracksCount'] != null)
+            _audioTracksCount = event['audioTracksCount'];
+          if (event['activeAudioTrack'] != null)
+            _activeAudioTrack = event['activeAudioTrack'];
+          if (event['spuTracksCount'] != null)
+            _spuTracksCount = event['spuTracksCount'];
+          if (event['activeSpuTrack'] != null)
+            _activeSpuTrack = event['activeSpuTrack'];
           if (event['audioCount'] != null) _audioCount = event['audioCount'];
           if (event['activeAudioTracks'] != null)
             _activeAudioNum = event['activeAudioTracks'];
@@ -341,6 +415,16 @@ class VlcPlayerController {
           _fireEventHandlers();
           break;
 
+        case 'paused':
+          _playingState = PlayingState.PAUSED;
+          _fireEventHandlers();
+          break;
+
+        case 'stopped':
+          _playingState = PlayingState.STOPPED;
+          _fireEventHandlers();
+          break;
+
         case 'buffering':
           if (event['value']) _playingState = PlayingState.BUFFERING;
           _fireEventHandlers();
@@ -350,6 +434,18 @@ class VlcPlayerController {
           _position = event['value'];
           _playbackSpeed = event['speed'];
           _fireEventHandlers();
+          break;
+
+        case 'castItemAdded':
+          if (_onCastHandler != null)
+            _onCastHandler(
+                CastStatus.DEVICE_ADDED, event['value'], event['displayName']);
+          break;
+
+        case 'castItemDeleted':
+          if (_onCastHandler != null)
+            _onCastHandler(CastStatus.DEVICE_DELETED, event['value'],
+                event['displayName']);
           break;
       }
     }).onError((e) {
@@ -362,12 +458,22 @@ class VlcPlayerController {
     _onInit();
   }
 
-  Future<void> setStreamUrl(String url) async {
+  Future<void> setStreamUrl(String url,
+      {bool isLocalMedia,
+      String subtitle,
+      bool isLocalSubtitle,
+      bool isSubtitleSelected}) async {
     _initialized = false;
     _fireEventHandlers();
 
-    bool wasPlaying = _playingState != PlayingState.STOPPED;
-    await _methodChannel.invokeMethod("changeURL", {'url': url});
+    bool wasPlaying = (_playingState == PlayingState.PLAYING);
+    await _methodChannel.invokeMethod("changeURL", {
+      'url': url,
+      'isLocalMedia': isLocalMedia ?? false,
+      'subtitle': subtitle ?? '',
+      'isLocalSubtitle': isLocalSubtitle ?? false,
+      'isSubtitleSelected': isSubtitleSelected ?? true,
+    });
     if (wasPlaying) play();
 
     _initialized = true;
@@ -375,31 +481,180 @@ class VlcPlayerController {
   }
 
   Future<void> play() async {
-    await _methodChannel
-        .invokeMethod("setPlaybackState", {'playbackState': 'play'});
+    await _methodChannel.invokeMethod("setPlaybackState", {
+      'playbackState': 'play',
+    });
   }
 
   Future<void> pause() async {
-    await _methodChannel
-        .invokeMethod("setPlaybackState", {'playbackState': 'pause'});
+    await _methodChannel.invokeMethod("setPlaybackState", {
+      'playbackState': 'pause',
+    });
   }
 
   Future<void> stop() async {
-    await _methodChannel
-        .invokeMethod("setPlaybackState", {'playbackState': 'stop'});
+    await _methodChannel.invokeMethod("setPlaybackState", {
+      'playbackState': 'stop',
+    });
+  }
+
+  Future<bool> isPlaying() async {
+    var result = await _methodChannel.invokeMethod("isPlaying");
+    return result;
   }
 
   Future<void> setTime(int time) async {
-    await _methodChannel.invokeMethod("setTime", {'time': time.toString()});
+    await _methodChannel.invokeMethod("setTime", {
+      'time': time.toString(),
+    });
+  }
+
+  Future<int> getTime() async {
+    var result = await _methodChannel.invokeMethod("getTime");
+    return result;
+  }
+
+  Future<int> getDuration() async {
+    var result = await _methodChannel.invokeMethod("getDuration");
+    return result;
   }
 
   Future<void> setVolume(int volume) async {
-    await _methodChannel.invokeMethod("setVolume", {'volume': volume});
+    await _methodChannel.invokeMethod("setVolume", {
+      'volume': volume,
+    });
+  }
+
+  Future<int> getVolume() async {
+    var result = await _methodChannel.invokeMethod("getVolume");
+    return result;
   }
 
   Future<void> setPlaybackSpeed(double speed) async {
-    await _methodChannel
-        .invokeMethod("setPlaybackSpeed", {'speed': speed.toString()});
+    await _methodChannel.invokeMethod("setPlaybackSpeed", {
+      'speed': speed.toString(),
+    });
+  }
+
+  Future<double> getPlaybackSpeed() async {
+    var result = await _methodChannel.invokeMethod("getPlaybackSpeed");
+    return result;
+  }
+
+  Future<int> getSpuTracksCount() async {
+    var result = await _methodChannel.invokeMethod("getSpuTracksCount");
+    return result;
+  }
+
+  Future<Map<dynamic, dynamic>> getSpuTracks() async {
+    Map<dynamic, dynamic> list =
+        await _methodChannel.invokeMethod("getSpuTracks");
+    return list;
+  }
+
+  Future<void> setSpuTrack(int spuTrackNumber) async {
+    await _methodChannel.invokeMethod("setSpuTrack", {
+      'spuTrackNumber': spuTrackNumber,
+    });
+  }
+
+  Future<int> getSpuTrack() async {
+    var result = await _methodChannel.invokeMethod("getSpuTrack");
+    return result;
+  }
+
+  Future<void> setSpuDelay(int delay) async {
+    await _methodChannel.invokeMethod("setSpuDelay", {
+      'delay': delay.toString(),
+    });
+  }
+
+  Future<int> getSpuDelay() async {
+    var result = await _methodChannel.invokeMethod("getSpuDelay");
+    return result;
+  }
+
+  Future<void> addSubtitleTrack(String subtitlePath,
+      {bool isLocalSubtitle, bool isSubtitleSelected}) async {
+    await _methodChannel.invokeMethod("addSubtitleTrack", {
+      'subtitlePath': subtitlePath,
+      'isLocalSubtitle': isLocalSubtitle ?? false,
+      'isSubtitleSelected': isSubtitleSelected ?? true,
+    });
+  }
+
+  Future<int> getAudioTracksCount() async {
+    var result = await _methodChannel.invokeMethod("getAudioTracksCount");
+    return result;
+  }
+
+  Future<Map<dynamic, dynamic>> getAudioTracks() async {
+    Map<dynamic, dynamic> list =
+        await _methodChannel.invokeMethod("getAudioTracks");
+    return list;
+  }
+
+  Future<int> getAudioTrack() async {
+    var result = await _methodChannel.invokeMethod("getAudioTrack");
+    return result;
+  }
+
+  Future<void> setAudioTrack(int audioTrackNumber) async {
+    await _methodChannel.invokeMethod("setAudioTrack", {
+      'audioTrackNumber': audioTrackNumber,
+    });
+  }
+
+  Future<void> setAudioDelay(int delay) async {
+    await _methodChannel.invokeMethod("setAudioDelay", {
+      'delay': delay.toString(),
+    });
+  }
+
+  Future<int> getAudioDelay() async {
+    var result = await _methodChannel.invokeMethod("getAudioDelay");
+    return result;
+  }
+
+  Future<int> getVideoTracksCount() async {
+    var result = await _methodChannel.invokeMethod("getVideoTracksCount");
+    return result;
+  }
+
+  Future<Map<dynamic, dynamic>> getVideoTracks() async {
+    Map<dynamic, dynamic> list =
+        await _methodChannel.invokeMethod("getVideoTracks");
+    return list;
+  }
+
+  Future<dynamic> getCurrentVideoTrack() async {
+    return await _methodChannel.invokeMethod("getCurrentVideoTrack");
+  }
+
+  Future<int> getVideoTrack() async {
+    return await _methodChannel.invokeMethod("getVideoTrack");
+  }
+
+  Future<void> setVideoScale(double scale) async {
+    await _methodChannel.invokeMethod("setVideoScale", {
+      'scale': scale.toString(),
+    });
+  }
+
+  Future<double> getVideoScale() async {
+    var result = await _methodChannel.invokeMethod("getVideoScale");
+    return result;
+  }
+
+  Future<void> setVideoAspectRatio(String aspect) async {
+    await _methodChannel.invokeMethod("setVideoAspectRatio", {
+      'aspect': aspect,
+    });
+  }
+
+  Future<String> getVideoAspectRatio() async {
+    var result = await _methodChannel.invokeMethod("getVideoAspectRatio");
+    return result;
   }
 
   Future<Uint8List> takeSnapshot() async {
@@ -410,8 +665,28 @@ class VlcPlayerController {
     return imageBytes;
   }
 
-  void dispose() {
-    _methodChannel.invokeMethod("dispose");
+  Future<void> startCastDiscovery() async {
+    await _methodChannel.invokeMethod("startCastDiscovery");
+  }
+
+  Future<void> stopCastDiscovery() async {
+    await _methodChannel.invokeMethod("stopCastDiscovery");
+  }
+
+  Future<Map<dynamic, dynamic>> getCastDevices() async {
+    Map<dynamic, dynamic> list =
+        await _methodChannel.invokeMethod("getCastDevices");
+    return list;
+  }
+
+  Future<void> startCasting(String castDevice) async {
+    await _methodChannel.invokeMethod("startCasting", {
+      'castDevice': castDevice,
+    });
+  }
+
+  Future<void> dispose() async {
+    await _methodChannel.invokeMethod("dispose");
   }
 
   void changeSound(int audioNumber) {
