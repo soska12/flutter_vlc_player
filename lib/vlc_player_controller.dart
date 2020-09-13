@@ -20,6 +20,14 @@ class VlcPlayerController {
     return result['aspectRatio'];
   }
 
+  Future<String> changeAndroidUrl(
+      String url, int defaultHeight, int defaultWidth) async {
+    var result = await _channel.invokeMethod("changeURL", {
+      'url': url,
+    });
+    return result['aspectRatio'];
+  }
+
   Future<Uint8List> makeSnapshot() async {
     var result = await _channel.invokeMethod("getSnapshot");
     var base64String = result['snapshot'];
@@ -44,22 +52,17 @@ class VlcPlayerController {
   }
 
   Future<bool> isPlaying() async {
-    if (Platform.isIOS) {
-      var result = await  _channel.invokeMethod("isPlaying");
-      return result['isPlaying'];
-    } else if (Platform.isAndroid) {
-      var result = await  _channel.invokeMethod("isPlaying");
-      return result['isPlaying'];
-    }
+    var result = await _channel.invokeMethod("isPlaying");
+    return result['isPlaying'];
   }
 
   Future<double> position() async {
-    var result = await  _channel.invokeMethod("position");
+    var result = await _channel.invokeMethod("position");
     return result['position'];
   }
 
   void setPosition(double position) {
-     _channel.invokeMethod("setPosition", {
+    _channel.invokeMethod("setPosition", {
       'position': position,
     });
   }
